@@ -19,6 +19,15 @@ def compute_gradient(img):
     grady=img[...,1:]-img[...,:-1]
     return gradx,grady
 
+class FFTLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.l1 = nn.L1Loss()
+
+    def forward(self, pred, target):
+        pred_fft = torch.fft.fft2(pred, dim=(-2, -1), norm="ortho")
+        target_fft = torch.fft.fft2(target, dim=(-2, -1), norm="ortho")
+        return self.l1(torch.abs(pred_fft), torch.abs(target_fft))
 
 class GradientLoss(nn.Module):
     def __init__(self):
@@ -273,4 +282,6 @@ def init_loss(opt, tensor):
         disc_loss.initialize(opt, tensor)
         loss_dic['gan'] = disc_loss
 
+    loss_dic['t_fft'] = FFTLoss()
+    
     return loss_dic

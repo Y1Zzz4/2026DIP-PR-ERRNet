@@ -281,6 +281,7 @@ class ERRNetModel(ERRNetBase):
         self.loss_icnn_pixel = None
         self.loss_icnn_vgg = None
         self.loss_G_GAN = None
+        self.loss_icnn_fft = None
 
         if self.opt.lambda_gan > 0:
             self.loss_G_GAN = self.loss_dic['gan'].get_g_loss(
@@ -293,6 +294,10 @@ class ERRNetModel(ERRNetBase):
             
             self.loss_icnn_vgg = self.loss_dic['t_vgg'].get_loss(
                 self.output_i, self.target_t)
+            
+            if self.opt.lambda_fft > 0:
+                self.loss_icnn_fft = self.loss_dic['t_fft'](self.output_i, self.target_t)
+                self.loss_G += self.loss_icnn_fft * self.opt.lambda_fft
 
             self.loss_G += self.loss_icnn_pixel+self.loss_icnn_vgg*self.opt.lambda_vgg
         else:
@@ -346,6 +351,9 @@ class ERRNetModel(ERRNetBase):
 
         if self.loss_CX is not None:
             ret_errors['CX'] = self.loss_CX.item()
+        
+        if self.loss_icnn_fft is not None:
+            ret_errors['FFT'] = self.loss_icnn_fft.item()
 
         return ret_errors
 
