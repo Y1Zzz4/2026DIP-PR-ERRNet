@@ -51,7 +51,8 @@ class DRNet(torch.nn.Module):
         # Initial convolution layers
         conv = nn.Conv2d
         deconv = nn.ConvTranspose2d
-        act = nn.LeakyReLU(0.2, True)
+        act = nn.ReLU(True)
+        # act = nn.LeakyReLU(0.2, True)
         
         self.pyramid_module = None
         self.conv1 = ConvLayer(conv, in_channels, n_feats, kernel_size=bottom_kernel_size, stride=1, norm=None, act=act)
