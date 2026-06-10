@@ -42,11 +42,23 @@ class SELayer(nn.Module):
         y = self.fc(y).view(b, c, 1, 1)
         
         return x * y        
-     
+
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7):
+        super().__init__()
+        padding = kernel_size // 2
+        self.conv = nn.Conv2d(2, 1, kernel_size, padding=padding, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out = torch.max(x, dim=1, keepdim=True)[0]
+        scale = self.sigmoid(self.conv(torch.cat([avg_out, max_out], dim=1)))
+        return x * scale     
 
 class DRNet(torch.nn.Module):
     def __init__(self, in_channels, out_channels, n_feats, n_resblocks, norm=nn.BatchNorm2d, 
-    se_reduction=None, res_scale=1, bottom_kernel_size=3, pyramid=False):
+    se_reduction=None, res_scale=1, bottom_kernel_size=3, pyramid=False, cbam=False):
         super(DRNet, self).__init__()
         # Initial convolution layers
         conv = nn.Conv2d
@@ -64,7 +76,7 @@ class DRNet(torch.nn.Module):
 
         self.res_module = nn.Sequential(*[ResidualBlock(
             n_feats, dilation=dilation_config[i], norm=norm, act=act, 
-            se_reduction=se_reduction, res_scale=res_scale) for i in range(n_resblocks)])
+            se_reduction=se_reduction, res_scale=res_scale, cbam=cbam) for i in range(n_resblocks)])
 
         # Upsampling Layers
         self.deconv1 = ConvLayer(deconv, n_feats, n_feats, kernel_size=4, stride=2, padding=1, norm=norm, act=act)
@@ -106,15 +118,21 @@ class ConvLayer(torch.nn.Sequential):
 
 
 class ResidualBlock(torch.nn.Module):
-    def __init__(self, channels, dilation=1, norm=nn.BatchNorm2d, act=nn.ReLU(True), se_reduction=None, res_scale=1):
-        super(ResidualBlock, self).__init__()
+    def __init__(self, channels, dilation=1, norm=nn.BatchNorm2d, act=nn.ReLU(True), 
+                 se_reduction=None, res_scale=1, cbam=False):     # ← 新增 cbam 参数
+        super().__init__()
         conv = nn.Conv2d
-        self.conv1 = ConvLayer(conv, channels, channels, kernel_size=3, stride=1, dilation=dilation, norm=norm, act=act)
-        self.conv2 = ConvLayer(conv, channels, channels, kernel_size=3, stride=1, dilation=dilation, norm=norm, act=None)
+        self.conv1 = ConvLayer(conv, channels, channels, kernel_size=3, stride=1, 
+                               dilation=dilation, norm=norm, act=act)
+        self.conv2 = ConvLayer(conv, channels, channels, kernel_size=3, stride=1, 
+                               dilation=dilation, norm=norm, act=None)
         self.se_layer = None
+        self.sa = None
         self.res_scale = res_scale
         if se_reduction is not None:
             self.se_layer = SELayer(channels, se_reduction)
+            if cbam:
+                self.sa = SpatialAttention(kernel_size=7)
 
     def forward(self, x):
         residual = x
@@ -122,6 +140,8 @@ class ResidualBlock(torch.nn.Module):
         out = self.conv2(out)
         if self.se_layer:
             out = self.se_layer(out)
+        if self.sa:
+            out = self.sa(out)
         out = out * self.res_scale
         out = out + residual
         return out
